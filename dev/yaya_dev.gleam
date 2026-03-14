@@ -2,6 +2,7 @@ import gleam/dict
 import gleam/dynamic/decode
 import gleam/io
 import gleam/json
+import internal/lexer
 import simplifile
 import yaya
 
@@ -24,5 +25,7 @@ fn data_decoder() -> decode.Decoder(Data) {
 }
 
 pub fn main() {
+  let assert Ok(content) = simplifile.read("data.yaml")
+  echo lexer.run_lexer(content)
   Nil
 }

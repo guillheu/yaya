@@ -3,8 +3,10 @@ import gleam/dynamic.{type Dynamic}
 import gleam/dynamic/decode
 import gleam/list
 import gleam/option.{type Option}
+import gleam/result
 import gleam/time/duration
 import gleam/time/timestamp.{type Timestamp}
+import internal/lexer
 
 pub opaque type Yaml {
   // dynamic.properties
@@ -27,11 +29,22 @@ pub opaque type Yaml {
   YamlDate(Timestamp)
 }
 
+pub type DecodeError {
+  UnableToDecode(List(decode.DecodeError))
+}
+
 pub fn parse(
   from yaml: String,
   using decoder: decode.Decoder(t),
-) -> Result(t, decode.DecodeError) {
-  todo
+) -> Result(t, DecodeError) {
+  let r =
+    yaml
+    |> lexer.run_lexer
+    |> private_parse
+  use decoded_yaml <- result.try(r)
+  to_dynamic(decoded_yaml)
+  |> decode.run(decoder)
+  |> result.map_error(UnableToDecode)
 }
 
 pub fn parse_bits(
@@ -109,6 +122,10 @@ pub fn timestamp(input: Timestamp) -> Yaml {
   YamlDate(input)
 }
 
+pub fn binary(input: BitArray) -> Yaml {
+  YamlBinary(input)
+}
+
 // Private functions
 
 // This does not implement TCO but it really should.
@@ -124,9 +141,9 @@ fn to_dynamic(yaml: Yaml) -> Dynamic {
     YamlBool(value) -> dynamic.bool(value)
     YamlNull -> dynamic.nil()
     YamlBinary(value) -> dynamic.bit_array(value)
-    YamlDate(value) ->
-      { "!!timestamp " <> timestamp.to_rfc3339(value, duration.seconds(0)) }
-      |> dynamic.string
+    YamlDate(value) -> todo as "Yaml date not yet implemented"
+    // { "!!timestamp " <> timestamp.to_rfc3339(value, duration.seconds(0)) }
+    // |> dynamic.string
   }
 }
 
@@ -134,4 +151,8 @@ fn pair_to_dynamics(value: #(Yaml, Yaml)) -> #(Dynamic, Dynamic) {
   let first = to_dynamic(value.0)
   let second = to_dynamic(value.1)
   #(first, second)
+}
+
+fn private_parse(list: List(lexer.YamlToken)) -> Result(Yaml, DecodeError) {
+  todo
 }

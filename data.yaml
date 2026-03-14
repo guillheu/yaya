@@ -1,2 +1,8 @@
-1: robert
-2: lucy
+rob:
+  name: Robert
+  country: USA
+  kind: human
+lucy:
+  name: Lucy
+  country: The Specific Ocean
+  kind: starfish
