@@ -31,14 +31,11 @@ pub type YamlToken {
   Anchor
   Alias
   TypeTag
-  Comment
+  Comment(String)
 }
 
 pub fn run_lexer(from: String) -> List(YamlToken) {
-  case { run_lexer_recurse(from, [], NewLine(0)) |> list.reverse } {
-    [_first, ..rest] -> rest
-    _ -> []
-  }
+  run_lexer_recurse(from, [], NewLine(0)) |> list.reverse
 }
 
 fn run_lexer_recurse(
@@ -54,9 +51,12 @@ fn run_lexer_recurse(
     " " <> rest ->
       case last_token {
         NewLine(n) -> run_lexer_recurse(rest, acc, NewLine(n + 1))
+        Comment(content) ->
+          run_lexer_recurse(rest, acc, Comment(content <> " "))
         _other -> run_lexer_recurse(rest, acc, last_token)
       }
     "-" <> rest -> run_lexer_recurse(rest, [last_token, ..acc], Hyphen)
+    "#" <> rest -> run_lexer_recurse(rest, [last_token, ..acc], Comment(""))
     "" -> [last_token, ..acc]
     other -> {
       let assert Ok(next_char) = string.first(other)
@@ -68,6 +68,8 @@ fn run_lexer_recurse(
       case last_token {
         Text(previous_text) ->
           run_lexer_recurse(rest, acc, Text(previous_text <> next_char))
+        Comment(content) ->
+          run_lexer_recurse(rest, acc, Comment(content <> next_char))
         _other -> run_lexer_recurse(rest, [last_token, ..acc], Text(next_char))
       }
     }
