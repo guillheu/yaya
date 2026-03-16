@@ -1,11 +1,5 @@
-key1: true    # bool
-key2: off     # bool
-key3: null    # nil
-key4: value   # string
-key5: 101     # int
-key6: ~       # nil
-key7: 0x12d4  # int (hex)
-key8: 023332  # int
-key9: .inf    # int (inf)
-key10: .NAN   # int (NaN)
-key11: 6.9    # float
+1: 
+  2:
+    3:
+      4: hello
+2: goodbye

@@ -34,8 +34,23 @@ pub type YamlToken {
   Comment(String)
 }
 
-pub fn run_lexer(from: String) -> List(YamlToken) {
-  run_lexer_recurse(from, [], NewLine(0)) |> list.reverse
+pub fn run_lexer(from: String) -> List(#(Int, List(YamlToken))) {
+  let #(r, _) =
+    [NewLine(0), ..run_lexer_recurse(from, [], NewLine(0))]
+    |> list.fold(#([], #(0, [])), fn(acc, next_token) {
+      let #(lines, #(current_line_indent, current_line_tokens)) = acc
+      case next_token {
+        NewLine(indent) -> #(
+          [#(indent, current_line_tokens), ..lines],
+          #(indent, []),
+        )
+        other -> #(
+          lines,
+          #(current_line_indent, [other, ..current_line_tokens]),
+        )
+      }
+    })
+  r
 }
 
 fn run_lexer_recurse(
