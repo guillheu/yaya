@@ -1,0 +1,62 @@
+
+  // case lines {
+  //   [NewLine(indent), ..rest] if indent < previous_indent ->
+  //     Ok(#(current_yaml, rest))
+
+  //   //
+  //   // "\n  text_key: text_value"
+  //   [NewLine(indent), Text(key_str), Colon, Text(value_str), ..rest]
+  //     if indent == previous_indent
+  //   -> {
+  //     let assert YamlMap(keyed_list) = current_yaml
+  //     let key = parse_string_token(key_str)
+  //     let val = parse_string_token(value_str)
+  //     let new_keyed_list = list.append(keyed_list, [#(key, val)])
+  //     let new_current_yaml = YamlMap(new_keyed_list)
+  //     parse_to_yaml_recurse(rest, new_current_yaml, indent)
+  //   }
+
+  //   //
+  //   // "\n  text_key:\n    "
+  //   [
+  //     NewLine(indent_this_line),
+  //     Text(key_str),
+  //     Colon,
+  //     NewLine(indent_next_line),
+  //     ..rest
+  //   ]
+  //     if indent_this_line == previous_indent
+  //   -> {
+  //     let assert YamlMap(keyed_list) = current_yaml
+  //     let r =
+  //       parse_to_yaml_recurse(
+  //         [NewLine(indent_next_line), ..rest],
+  //         YamlMap([]),
+  //         indent_next_line,
+  //       )
+  //     use #(field_value, rest) <- result.try(r)
+  //     let new_keyed_list =
+  //       list.append(keyed_list, [#(YamlString(key_str), field_value)])
+  //     let new_current_yaml = YamlMap(new_keyed_list)
+  //     parse_to_yaml_recurse(rest, new_current_yaml, indent_this_line)
+  //   }
+
+  //   //
+  //   // Comments are ignored
+  //   [Comment(_), ..rest] ->
+  //     parse_to_yaml_recurse(rest, current_yaml, previous_indent)
+
+  //   //
+  //   // empty, final return
+  //   [] -> Ok(#(current_yaml, []))
+
+  //   //
+  //   // unknown, unhandled
+  //   other ->
+  //     Error(
+  //       todo as {
+  //         "unimplemented parsing case or parsing error: "
+  //         <> string.inspect(other)
+  //       },
+  //     )
+  // }

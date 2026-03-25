@@ -66,6 +66,7 @@ pub fn parse(
     |> parse_to_yaml
   use decoded_yaml <- result.try(r)
   to_dynamic(decoded_yaml)
+  |> echo
   |> decode.run(decoder)
   |> result.map_error(UnableToDecode)
 }
@@ -200,53 +201,14 @@ fn parse_to_yaml_recurse(
     //
     // STAYING IN THE SAME OBJECT
     [#(indent, tokens), ..lines_rest], _ if indent == previous_indent ->
-      case tokens {
-        // Flat map, just append to existing map
-        [Text(key_str), Colon, Text(value_str)] -> {
-          let r = case current_yaml {
-            Some(YamlMap(keyed_list)) -> Ok(keyed_list)
-            None -> Ok([])
-            _ ->
-              Error(InvalidFormat(
-                "Expected line contains a mapping, but we were previously evaluating something that's not a mapping",
-              ))
-          }
-          use keyed_list <- result.try(r)
-          let key = parse_string_token(key_str)
-          let val = parse_string_token(value_str)
-          let new_keyed_list = list.append(keyed_list, [#(key, val)])
-          let new_current_yaml = YamlMap(new_keyed_list)
-          parse_to_yaml_recurse(
-            lines_rest,
-            Some(new_current_yaml),
-            indent,
-            tasks_stack,
-          )
-        }
-        // We expect a nested object. Prepending a task
-        [Text(key_str), Colon] -> {
-          let new_task = #(indent, fn(value_yaml: Yaml) {
-            YamlMap([#(parse_string_token(key_str), value_yaml)])
-          })
-          // We prepend a task, don't change the indent, and set the current yaml no None
-          // This is because next loop will notice the (normally) higher indent, 
-          // and check the current_yaml to see whether we expected to enter a new block
-          // if not, then it's an error. If yes, we're just in a nested object and next
-          // indent will be set to the new block indent
-          parse_to_yaml_recurse(lines_rest, None, indent, [
-            new_task,
-            ..tasks_stack
-          ])
-        }
-        [] ->
-          parse_to_yaml_recurse(
-            lines_rest,
-            current_yaml,
-            previous_indent,
-            tasks_stack,
-          )
-        other -> todo as { "unhandled: " <> string.inspect(other) }
-      }
+      found_line_same_indent(
+        tokens,
+        current_yaml,
+        lines_rest,
+        indent,
+        tasks_stack,
+        previous_indent,
+      )
 
     // NESTING INTO A DEEPER OBJECT
     [#(indent, tokens), ..lines_rest], None if indent > previous_indent ->
@@ -255,27 +217,16 @@ fn parse_to_yaml_recurse(
           parse_to_yaml_recurse(lines, Some(YamlMap([])), indent, tasks_stack)
         _ -> todo
       }
+
     // Nesting, but still working on a yaml. ERROR
     [#(indent, tokens), ..lines_rest], Some(_) if indent > previous_indent ->
-      Error(InvalidIndent)
+      found_line_higher_indent_unexpected()
 
     // FINISHED NESTED OBJECT, GOING BACK UP
     [#(indent, tokens), ..lines_rest], Some(current_yaml)
       if indent < previous_indent
     -> {
-      case tasks_stack {
-        [#(task_indent, task_function), ..tasks_rest] if indent <= task_indent -> {
-          let higher_yaml = task_function(current_yaml)
-          parse_to_yaml_recurse(
-            lines,
-            Some(higher_yaml),
-            task_indent,
-            tasks_rest,
-          )
-        }
-        _ ->
-          todo as "should throw an error because that means having a high indent first into a low indent"
-      }
+      found_line_lower_indent(tasks_stack, indent, current_yaml, lines)
     }
 
     // Going back up without starting an expected yaml,
@@ -289,67 +240,99 @@ fn parse_to_yaml_recurse(
     _, _ ->
       panic as "unreachable code. How can an int be neither ==, <= or >= to another?"
   }
-  // case lines {
-  //   [NewLine(indent), ..rest] if indent < previous_indent ->
-  //     Ok(#(current_yaml, rest))
+}
 
-  //   //
-  //   // "\n  text_key: text_value"
-  //   [NewLine(indent), Text(key_str), Colon, Text(value_str), ..rest]
-  //     if indent == previous_indent
-  //   -> {
-  //     let assert YamlMap(keyed_list) = current_yaml
-  //     let key = parse_string_token(key_str)
-  //     let val = parse_string_token(value_str)
-  //     let new_keyed_list = list.append(keyed_list, [#(key, val)])
-  //     let new_current_yaml = YamlMap(new_keyed_list)
-  //     parse_to_yaml_recurse(rest, new_current_yaml, indent)
-  //   }
+fn found_line_higher_indent_unexpected() -> Result(
+  #(Yaml, List(lexer.YamlToken)),
+  DecodeError,
+) {
+  Error(InvalidIndent)
+}
 
-  //   //
-  //   // "\n  text_key:\n    "
-  //   [
-  //     NewLine(indent_this_line),
-  //     Text(key_str),
-  //     Colon,
-  //     NewLine(indent_next_line),
-  //     ..rest
-  //   ]
-  //     if indent_this_line == previous_indent
-  //   -> {
-  //     let assert YamlMap(keyed_list) = current_yaml
-  //     let r =
-  //       parse_to_yaml_recurse(
-  //         [NewLine(indent_next_line), ..rest],
-  //         YamlMap([]),
-  //         indent_next_line,
-  //       )
-  //     use #(field_value, rest) <- result.try(r)
-  //     let new_keyed_list =
-  //       list.append(keyed_list, [#(YamlString(key_str), field_value)])
-  //     let new_current_yaml = YamlMap(new_keyed_list)
-  //     parse_to_yaml_recurse(rest, new_current_yaml, indent_this_line)
-  //   }
+fn found_line_lower_indent(
+  tasks_stack: List(#(Int, fn(Yaml) -> Yaml)),
+  indent: Int,
+  current_yaml: Yaml,
+  lines: List(#(Int, List(lexer.YamlToken))),
+) -> Result(#(Yaml, List(lexer.YamlToken)), DecodeError) {
+  case tasks_stack {
+    [#(task_indent, task_function), ..tasks_rest] if indent <= task_indent -> {
+      let higher_yaml = task_function(current_yaml)
+      parse_to_yaml_recurse(lines, Some(higher_yaml), task_indent, tasks_rest)
+    }
+    _ ->
+      todo as "should throw an error because that means having a high indent first into a low indent"
+  }
+}
 
-  //   //
-  //   // Comments are ignored
-  //   [Comment(_), ..rest] ->
-  //     parse_to_yaml_recurse(rest, current_yaml, previous_indent)
-
-  //   //
-  //   // empty, final return
-  //   [] -> Ok(#(current_yaml, []))
-
-  //   //
-  //   // unknown, unhandled
-  //   other ->
-  //     Error(
-  //       todo as {
-  //         "unimplemented parsing case or parsing error: "
-  //         <> string.inspect(other)
-  //       },
-  //     )
-  // }
+fn found_line_same_indent(
+  tokens: List(lexer.YamlToken),
+  current_yaml: Option(Yaml),
+  lines_rest: List(#(Int, List(lexer.YamlToken))),
+  indent: Int,
+  tasks_stack: List(#(Int, fn(Yaml) -> Yaml)),
+  previous_indent: Int,
+) -> Result(#(Yaml, List(lexer.YamlToken)), DecodeError) {
+  case tokens {
+    // Flat map, just append to existing map
+    [Text(key_str), Colon, Text(value_str)] -> {
+      let r = case current_yaml {
+        Some(YamlMap(keyed_list)) -> Ok(keyed_list)
+        None -> Ok([])
+        _ ->
+          Error(InvalidFormat(
+            "Expected line contains a mapping, but we were previously evaluating something that's not a mapping",
+          ))
+      }
+      use keyed_list <- result.try(r)
+      let key = parse_string_token(key_str)
+      let val = parse_string_token(value_str)
+      let new_keyed_list = list.append(keyed_list, [#(key, val)])
+      let new_current_yaml = YamlMap(new_keyed_list)
+      parse_to_yaml_recurse(
+        lines_rest,
+        Some(new_current_yaml),
+        indent,
+        tasks_stack,
+      )
+    }
+    // We expect a nested object. Prepending a task
+    [Text(key_str), Colon] -> {
+      let r = case current_yaml {
+        None -> Ok([])
+        Some(YamlMap(contents)) -> Ok(contents)
+        _ ->
+          Error(InvalidFormat(
+            "Found the continuation of a Yaml object (at key \""
+            <> key_str
+            <> "\"), but the preceding content is not an object (found "
+            <> string.inspect(current_yaml)
+            <> ")",
+          ))
+      }
+      use previous_yaml_map_content <- result.try(r)
+      let new_task = #(indent, fn(value_yaml: Yaml) {
+        YamlMap([
+          #(parse_string_token(key_str), value_yaml),
+          ..previous_yaml_map_content
+        ])
+      })
+      // We prepend a task, don't change the indent, and set the current yaml no None
+      // This is because next loop will notice the (normally) higher indent, 
+      // and check the current_yaml to see whether we expected to enter a new block
+      // if not, then it's an error. If yes, we're just in a nested object and next
+      // indent will be set to the new block indent
+      parse_to_yaml_recurse(lines_rest, None, indent, [new_task, ..tasks_stack])
+    }
+    [] ->
+      parse_to_yaml_recurse(
+        lines_rest,
+        current_yaml,
+        previous_indent,
+        tasks_stack,
+      )
+    other -> todo as { "unhandled: " <> string.inspect(other) }
+  }
 }
 
 fn parse_string_token(from: String) -> Yaml {
