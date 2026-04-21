@@ -1,14 +1,7 @@
 # YAYA
 ### Yet Another Yaml Again
 
-## TODO
-- implement many, many, many more test cases. Ideally use some existing tests suites.
-- TCO for lexer
-- TCO for `to_dynamic`
-- lexer should start by splitting the input string into lines
-- lexer should run over bit arrays, not strings.
+# HELP WANTED
 
-## Questions to answer:
-- How to handle document start `---` and end `---`? This would be like having multiple json declarations in a single json file. I think it should be unsupported, or alternatively yaya could always return an array of yaml documents, and let the user decode each document into its expected type
-- Where do we draw the line of things to support or not? For a version 1.0 I think the full spec should be covered, but in general I'd be content with supporting a subset of all tokens. I'm not sure yet.
-- How should we benchmark yaya against existing erlang and javascript yaml parsers?
+Writing a YAML parser is, in fact, pretty difficult, and [should ideally be done in a very specific way](https://yaml.org/spec/1.2.2/#chapter-3-processes-and-models). I don't have the time to handle something like this by myself.
+If you have *any* interest in contributing, especially if you have experience with writing YAML parsers, please contact me.
